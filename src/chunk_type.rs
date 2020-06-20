@@ -1,56 +1,74 @@
-use std::{str::FromStr, convert::TryFrom, fmt::Display};
 use crate::Error;
+use std::{convert::TryFrom, fmt::Display, str::FromStr};
 
-/// PNG Chunk Type
+/// Chunk Type for v1.2 of the PNG spec
+///
+/// See [PNG Structure - Chunk Naming Conventions](http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html#Chunk-naming-conventions) for details
 #[derive(Debug, Eq, PartialEq)]
 pub struct ChunkType {
-    bytes: [u8; 4]
+    bytes: [u8; 4],
 }
 
 impl ChunkType {
+    /// Bytes encoding the chunk type
     fn bytes(&self) -> [u8; 4] {
         self.bytes
     }
-    
+
+    /// Bytes must only be in the lower-case and upper-case ASCII ranges, and the reserved bit must be valid
     fn is_valid(&self) -> bool {
-        todo!();
+        let valid_chars = self
+            .bytes
+            .iter()
+            .all(|&b| (b >= b'a' && b <= b'z' || (b >= b'A' && b <= b'Z')));
+        valid_chars && self.is_reserved_bit_valid()
     }
 
+    /// A type code is critical if bit 5 (value 32) of the first byte is 0
     fn is_critical(&self) -> bool {
-        todo!();
+        (self.bytes[0] & 0x20) != 0x20
     }
 
+    /// A type code is public if bit 5 (value 32) of the second byte is 0
     fn is_public(&self) -> bool {
-        todo!();
+        (self.bytes[1] & 0x20) != 0x20
     }
 
+    /// Bit 5 of the third byte is reserved and must be 0
     fn is_reserved_bit_valid(&self) -> bool {
-        todo!();
+        (self.bytes[2] & 0x20) != 0x20
     }
 
+    /// A type code is safe to copy if bit 5 (value 32) of the fourth byte is 1
     fn is_safe_to_copy(&self) -> bool {
-        todo!();
+        (self.bytes[3] & 0x20) == 0x20
     }
 }
 
 impl TryFrom<[u8; 4]> for ChunkType {
     type Error = Error;
-    
+
     fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
-        Ok(Self {
-            bytes: value
-        })
+        Ok(Self { bytes: value })
     }
 }
 
 impl FromStr for ChunkType {
     type Err = Error;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = s.as_bytes();
 
         if bytes.len() != 4 {
-            return Err(Box::new(ChunkError::ByteLengthError(bytes.len())))
+            return Err(Box::new(ChunkError::ByteLengthError(bytes.len())));
+        }
+
+        let valid_chars = bytes
+            .iter()
+            .all(|&b| (b >= b'a' && b <= b'z' || (b >= b'A' && b <= b'Z')));
+
+        if !valid_chars {
+            return Err(Box::new(ChunkError::InvalidCharacter));
         }
 
         let sized: [u8; 4] = [bytes[0], bytes[1], bytes[2], bytes[3]];
@@ -62,7 +80,7 @@ impl Display for ChunkType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match std::str::from_utf8(&self.bytes) {
             Ok(s) => write!(f, "{}", s),
-            Err(_) => Err(std::fmt::Error)
+            Err(_) => Err(std::fmt::Error),
         }
     }
 }
@@ -71,7 +89,10 @@ impl Display for ChunkType {
 #[derive(Debug)]
 pub enum ChunkError {
     /// Chunk has incorrect number of bytes (4 expected)
-    ByteLengthError(usize)
+    ByteLengthError(usize),
+
+    /// The input string contains an invalid character at the given index
+    InvalidCharacter,
 }
 
 impl std::error::Error for ChunkError {}
@@ -79,7 +100,14 @@ impl std::error::Error for ChunkError {}
 impl Display for ChunkError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ChunkError::ByteLengthError(actual) => write!(f, "Expected 4 bytes but received {} when creating chunk type", actual)
+            ChunkError::ByteLengthError(actual) => write!(
+                f,
+                "Expected 4 bytes but received {} when creating chunk type",
+                actual
+            ),
+            ChunkError::InvalidCharacter => {
+                write!(f, "Input contains one or more invalid characters")
+            }
         }
     }
 }
