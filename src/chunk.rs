@@ -6,19 +6,28 @@ use std::{
 };
 
 /// Represents a single chunk in the PNG spec
+#[derive(Debug, PartialEq)]
 pub struct Chunk {
     chunk_type: ChunkType,
     data: Vec<u8>,
 }
 
 impl Chunk {
+    pub const DATA_LENGTH_BYTES: usize = 4;
+    pub const CHUNK_TYPE_BYTES: usize = 4;
+    pub const CRC_BYTES: usize = 4;
+
+    /// Total size of the of the metadata making up a chunk
+    pub const METADATA_BYTES: usize =
+        Chunk::DATA_LENGTH_BYTES + Chunk::CHUNK_TYPE_BYTES + Chunk::CRC_BYTES;
+
     /// Create a new chunk
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
         Self { chunk_type, data }
     }
 
     /// Length of the chunk
-    fn length(&self) -> usize {
+    pub fn length(&self) -> usize {
         self.data.len()
     }
 
@@ -52,10 +61,13 @@ impl Chunk {
 
     /// Entire chunk represented as bytes
     pub fn as_bytes(&self) -> Vec<u8> {
-        self.chunk_type
-            .bytes()
+        let data_length = self.data.len() as u32;
+        data_length
+            .to_be_bytes()
             .iter()
-            .chain(&self.data)
+            .chain(self.chunk_type.bytes().iter())
+            .chain(self.data.iter())
+            .chain(self.crc().to_be_bytes().iter())
             .copied()
             .collect()
     }
@@ -65,16 +77,16 @@ impl TryFrom<&[u8]> for Chunk {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self> {
-        if value.len() < 12 {
+        if value.len() < Chunk::METADATA_BYTES {
             return Err(Box::from(ChunkError::InputTooSmall));
         }
 
         // consume first 4 bytes as data length
-        let (data_length, value) = value.split_at(4);
+        let (data_length, value) = value.split_at(Chunk::DATA_LENGTH_BYTES);
         let data_length = u32::from_be_bytes(data_length.try_into()?) as usize;
 
         // consume next 4 bytes as chunk type
-        let (chunk_type_bytes, value) = value.split_at(4);
+        let (chunk_type_bytes, value) = value.split_at(Chunk::CHUNK_TYPE_BYTES);
 
         let chunk_type_bytes: [u8; 4] = chunk_type_bytes.try_into()?;
         let chunk_type: ChunkType = ChunkType::try_from(chunk_type_bytes)?;
@@ -83,12 +95,8 @@ impl TryFrom<&[u8]> for Chunk {
             return Err(Box::from(ChunkError::InvalidChunkType));
         }
 
-        // final 4 bytes are CRC, everything before that is data
-        if data_length != value.len() - 4 {
-            return Err(Box::from(ChunkError::InvalidDataLength));
-        }
-
-        let (data, crc_bytes) = value.split_at(data_length);
+        let (data, value) = value.split_at(data_length);
+        let (crc_bytes, _) = value.split_at(Chunk::CRC_BYTES);
 
         // validate CRC
         let new = Self {
@@ -112,7 +120,6 @@ pub enum ChunkError {
     InputTooSmall,
     InvalidCrc(u32, u32),
     InvalidChunkType,
-    InvalidDataLength,
 }
 
 impl std::error::Error for ChunkError {}
@@ -129,7 +136,6 @@ impl Display for ChunkError {
                 expected, actual
             ),
             ChunkError::InvalidChunkType => write!(f, "Invalid chunk type"),
-            ChunkError::InvalidDataLength => write!(f, "Invalid data length"),
         }
     }
 }
@@ -172,6 +178,29 @@ mod tests {
     fn test_chunk_crc() {
         let chunk = testing_chunk();
         assert_eq!(chunk.crc(), 2882656334);
+    }
+
+    #[test]
+    fn test_as_bytes() {
+        let data_length: u32 = 42;
+        let chunk_type = b"RuSt";
+        let message_bytes = "This is where your secret message will be!".as_bytes();
+        let crc: u32 = 2882656334;
+
+        let expected_bytes: Vec<u8> = data_length
+            .to_be_bytes()
+            .iter()
+            .chain(chunk_type.iter())
+            .chain(message_bytes.iter())
+            .chain(crc.to_be_bytes().iter())
+            .copied()
+            .collect();
+
+        let chunk = Chunk::try_from(expected_bytes.as_ref()).unwrap();
+
+        let actual_bytes = chunk.as_bytes();
+
+        assert_eq!(actual_bytes, expected_bytes);
     }
 
     #[test]
