@@ -13,7 +13,7 @@ pub struct Chunk {
 
 impl Chunk {
     /// Create a new chunk
-    fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
+    pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Self {
         Self { chunk_type, data }
     }
 
@@ -23,7 +23,7 @@ impl Chunk {
     }
 
     /// Chunk type
-    fn chunk_type(&self) -> &ChunkType {
+    pub fn chunk_type(&self) -> &ChunkType {
         &self.chunk_type
     }
 
@@ -45,13 +45,13 @@ impl Chunk {
     }
 
     /// Chunk data as a string
-    fn data_as_string(&self) -> Result<String> {
+    pub fn data_as_string(&self) -> Result<String> {
         let s = std::str::from_utf8(&self.data)?;
         Ok(s.to_string())
     }
 
     /// Entire chunk represented as bytes
-    fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         self.chunk_type
             .bytes()
             .iter()
