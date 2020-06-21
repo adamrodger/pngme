@@ -11,12 +11,12 @@ pub struct ChunkType {
 
 impl ChunkType {
     /// Bytes encoding the chunk type
-    fn bytes(&self) -> [u8; 4] {
+    pub fn bytes(&self) -> [u8; 4] {
         self.bytes
     }
 
     /// Bytes must only be in the lower-case and upper-case ASCII ranges, and the reserved bit must be valid
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         let valid_chars = self
             .bytes
             .iter()
@@ -60,7 +60,7 @@ impl FromStr for ChunkType {
         let bytes = s.as_bytes();
 
         if bytes.len() != 4 {
-            return Err(Box::new(ChunkError::ByteLengthError(bytes.len())));
+            return Err(Box::new(ChunkTypeError::ByteLengthError(bytes.len())));
         }
 
         let valid_chars = bytes
@@ -68,7 +68,7 @@ impl FromStr for ChunkType {
             .all(|&b| (b >= b'a' && b <= b'z' || (b >= b'A' && b <= b'Z')));
 
         if !valid_chars {
-            return Err(Box::new(ChunkError::InvalidCharacter));
+            return Err(Box::new(ChunkTypeError::InvalidCharacter));
         }
 
         let sized: [u8; 4] = [bytes[0], bytes[1], bytes[2], bytes[3]];
@@ -78,16 +78,14 @@ impl FromStr for ChunkType {
 
 impl Display for ChunkType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match std::str::from_utf8(&self.bytes) {
-            Ok(s) => write!(f, "{}", s),
-            Err(_) => Err(std::fmt::Error),
-        }
+        let s = std::str::from_utf8(&self.bytes).map_err(|_| std::fmt::Error)?;
+        write!(f, "{}", s)
     }
 }
 
 /// Chunk type errors
 #[derive(Debug)]
-pub enum ChunkError {
+pub enum ChunkTypeError {
     /// Chunk has incorrect number of bytes (4 expected)
     ByteLengthError(usize),
 
@@ -95,17 +93,17 @@ pub enum ChunkError {
     InvalidCharacter,
 }
 
-impl std::error::Error for ChunkError {}
+impl std::error::Error for ChunkTypeError {}
 
-impl Display for ChunkError {
+impl Display for ChunkTypeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ChunkError::ByteLengthError(actual) => write!(
+            ChunkTypeError::ByteLengthError(actual) => write!(
                 f,
                 "Expected 4 bytes but received {} when creating chunk type",
                 actual
             ),
-            ChunkError::InvalidCharacter => {
+            ChunkTypeError::InvalidCharacter => {
                 write!(f, "Input contains one or more invalid characters")
             }
         }
